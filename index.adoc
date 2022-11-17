@@ -1,0 +1,349 @@
+= Introduction to Neo4j Plugins
+:backend: revealjs
+:customcss: nodes2022.css
+:topic: state=title
+:icons: font
+:source-highlighter: highlightjs
+:revealjs_history: true
+:revealjs_width: "100%"
+:revealjs_height: "100%"
+:revealjs_controlsTutorial: false
+:revealjs_fragmentInURL: true
+:revealjs_pdfseparatefragments: false
+:highlightjs-theme: highlight/styles/base16/horizon-dark.min.css
+//:highlightjs-theme: highlight/styles/github-dark.min.css
+:revealjs_theme: night
+:title-slide-background-image: title-bg.png
+
+[%notitle]
+== About Me
+
+--
+Bert Radke
+
+Senior Graph Consultant @Neo4j
+
+Fediverse: @taseroth@chaos.social
+--
+
+// [.columns.stretch]
+// == Agenda
+
+// [column]
+// --
+// * What are Neo4j Plugins
+// * How do I use them
+// * When to use them (and when not)
+// * Example
+// --
+// [column]
+// --
+// * Injectables
+// * Java API
+// * Traversal API
+// * Testing
+// --
+
+== What are Neo4j Plugins
+
+[%step]
+* `*.jar`
+* Inside `/plugins/`
+* Loaded at Startup
+* Live inside Neo4j JVM
+
+[.notes]
+--
+* Java!
+* what are jars
+* share resources, esp. Threads and Memory
+* -> possible danger
+--
+
+[%notitle]
+=== What are Neo4j Plugins
+
+[%step]
+* Annotated with `@Procedure` or `@UserFunction`
+
+[.notes]
+--
+* Procedures: use via call
+* functions:
+    * produce singular value
+    * only read
+--
+
+[%step]
+[source,java,highlight='1-6|1-2|3-4|5-6']
+----
+@Procedure("example.getRelationshipTypes",
+           mode = Mode.READ)
+@Description("Get the different relationships going
+             in and out of a node.")
+public Stream<RelationshipTypes>
+         getRelationshipTypes(@Name("node") Node node) {
+----
+
+
+== APIs
+
+[.notes]
+--
+* All that Java provides
+* can also bundle additional dependencies
+* lets briefly talk about Neo4j provides to plugins
+--
+
+== Injectables
+
+[source,java]
+----
+@Context
+public GraphDatabaseService db;
+
+@Context
+public Log log;
+
+@Context
+public Transaction tx;
+----
+
+[.notes]
+--
+* only in classes with @Procedure annotation
+* @Context annotation
+* must be:
+    ** public
+    ** non-static
+--
+
+=== Log
+
+[%step]
+
+* Class: `org.neo4j.logging.Log`
+* Log levels: error, warn, info, debug
+* Placeholders: `LOG.info("deleted %d nodes", nbNodes)`
+
+
+[.notes]
+--
+* Not Log4j, SLf4J, ..
+* String.format(),
+* logged into neo4j.log (or console)
+--
+
+=== Transaction
+
+[%step]
+
+* Class: `org.neo4j.graphdb.Transaction`
+* Starting point for most procedures
+* `tx.createNode(Label.label("Movie"), Label.label("SciFi"));`
+* `tx.findNodes(Label.label("Person"), "surName", "Tom");`
+
+
+[.notes]
+--
+* user provided transaction
+* outside
+* last step: how to add attributes
+--
+
+=== GraphDatabaseService
+
+[%step]
+
+* Class: `org.neo4j.graphdb.GraphDatabaseService`
+* Starting of new Transactions `db.beginTx();`
+* Name of the current database `db.databaseName()`
+
+
+[.notes]
+--
+* other classes to inject:
+  ** GraphDatabaseAPI, DependencyResolver, SecurityContext, ProcedureCallContext, SystemGraphComponents
+--
+
+== Java API
+
+=== Cypher
+[source]
+----
+MATCH (hanks:Person {name: 'Tom Hanks'})-[:DIRECTED]->(movie)
+return collect(movie.title)
+----
+
+=== Java
+
+[source,java,highlight='1-10|1-2|5-6|4,7|8|9|10']
+----
+var hanks = tx.findNode(Label.label("Person"),
+            "name", "Tom Hanks");
+
+  StreamSupport.stream(
+    hanks.getRelationships(
+    Direction.OUTGOING, RelationshipType.withName("DIRECTED"))
+  .spliterator(), false)
+    .map(Relationship::getEndNode)
+    .map(movie -> movie.getProperty("title"))
+    .collect(Collectors.toSet());
+----
+
+[.notes]
+--
+at end:
+* on entities, many operations,
+ ** set/get properties,
+ ** create relationships,
+ ** delete
+--
+
+[.columns]
+=== Threads and Transactions
+
+[.column]
+--
+[%step]
+
+* *Transactions* bound to *Threads*
+* *Entities* proxies bound to *Transactions*
+* Do _NOT_ pass Entities to Threads
+--
+[.column]
+--
+[%step]
+[source,java]
+----
+var nodeId = node.getId();
+----
+
+[%step]
+[source,java]
+----
+var node = tx.getNodeById(nodeId);
+----
+--
+[.notes]
+--
+* before firts: explain creation of threads
+--
+
+== Traversal API
+
+[source,java,highlight='1-7|1-2|3|4|5|6|7']
+----
+TraversalDescription traverseDescription =
+    db.beginTx().traversalDescription()
+      .uniqueness(NODE_GLOBAL)
+      .breadthFirst()
+      .expandand(new AllExpander())
+      .evaluationluator(new GreenEvaluator(minimumGreen))
+Traverser traverser = traverseDescription.traverse(startNodes);
+----
+
+[.small]
+https://faboo.org/2021/01/neo4j-traversal-api/[https://faboo.org/2021/01/neo4j-traversal-api/]
+
+[.notes]
+--
+* main concepts
+ ** hands of actual traversal to API, providing call backs
+* expander
+* evaluator
+* does not start before traverse is called
+* single threaded
+* -> blog post
+--
+
+== Testing
+
+[.notes]
+--
+ ** Test Harness
+ ** JUnit integration
+--
+
+[%notitle]
+=== Test Example
+
+[source,java,highlight=1-15|1-2|4-5|6|8-9|10|11|12|13|14]
+----
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+public class JoinTest {
+
+    private static final Config driverConfig =
+            Config.builder().withoutEncryption().build();
+    private Neo4j embeddedDb;
+
+    @BeforeAll
+    void initializeNeo4j() {
+        this.embeddedDb = Neo4jBuilders.newInProcessBuilder()
+                .withDisabledServer()
+                .withFunction(Join.class)
+                .withFixture(..)
+                .build();
+    }
+----
+
+[%notitle]
+=== Test Example
+// ,highlight=1-12|1-2|4-7|3,8|10
+[source,java]
+----
+@Test
+void joinsStrings() {
+    try(
+        Driver driver = GraphDatabase.driver(
+                  embeddedDb.boltURI(),
+                        driverConfig);
+        Session session = driver.session()
+        ) {
+
+        var result = session.run("CALL our.procedure()");
+    }
+}
+----
+
+[.columns.stretch]
+== Should I build a Plugin?
+
+[%step]
+[column]
+--
+*PRO*
+
+* Maximum Flexibility
+* Parallel Execution
+* https://neo4j.com/docs/java-reference/current/extending-neo4j/security-plugins/[Custom Auth Provider]
+--
+
+[%step]
+[column]
+--
+*CON*
+
+* Harder to maintain and test
+* Deployment needs Server-Restart
+* Not available on *Aura*
+* No `EXPLAIN` or `PROFILE`
+--
+
+
+== Starting point
+
+* GitHub Template Repository
+* https://github.com/neo4j-examples/neo4j-procedure-template[https://github.com/neo4j-examples/neo4j-procedure-template]
+* Contains examples, build and test infrastructure
+
+[.blue.canvas]
+[%notitle]
+== Presentation
+
+Thank you for listening
+
+[.small]
+Full text available at https://faboo.org/2022/11/neo4j-plugins/[https://faboo.org/2022/11/neo4j-plugins/]
+
+

@@ -1,0 +1,39 @@
+.reveal section.title h1 {
+    margin-top: 6.5em;
+    margin-left: 2em;
+    text-align: left;
+    font-size: xxx-large;
+    font-family: 'Arial';
+    text-transform: none;
+}
+
+.reveal .controls {
+    color: #476de4;
+}
+
+.reveal-viewport {
+    background: #25469e;
+}
+
+/* Inline code */
+.reveal p code {
+    border-radius: 5px;
+    padding: 1px 7px;
+    border: 1px solid rgba(255,255,255,.4);
+    font-size: .8em;
+    white-space: nowrap; 
+    background-color: brown;
+  }
+
+
+.reveal pre code {
+    padding: 20px;
+    font-size: 1.6em;
+    line-height: 1.5em;
+    white-space: pre-wrap; 
+    max-height: none;
+  }
+
+  .reveal .code-wrapper {
+    width: 100%;
+  }
