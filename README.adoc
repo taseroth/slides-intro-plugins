@@ -1,3 +1,7 @@
 Reveal js based slides for my #Nodes2022 lightning talk on Neo4j plugins.
 
 https://taseroth.github.io/slides-intro-plugins/[live]
+
+As I only had 15 min time, I wrote a longer version of the talk in https://faboo.org/2022/11/neo4j-plugins/[my blog].
+
+The recording of the talk can be found on https://www.youtube.com/watch?v=LwMuQXOm3zo&list=PL9Hl4pk2FsvWPcphew_GbLjCWvMpmh4mV[youtube].
